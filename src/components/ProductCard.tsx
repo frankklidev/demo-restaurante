@@ -15,7 +15,7 @@ export default function ProductCard({ product }: Props) {
       to={`/producto/${product.slug}`}
       className="group overflow-hidden rounded-3xl border border-peppino-dark/10 bg-white transition hover:shadow-md"
     >
-      <div className="relative aspect-[4/3] overflow-hidden">
+      <div className="relative aspect-4/3 overflow-hidden">
         <img
           src={product.imageUrl}
           alt={product.name}

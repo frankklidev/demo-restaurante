@@ -58,7 +58,7 @@ export default function Navbar() {
             className={({ isActive }) =>
               [
                 linkClass(isActive),
-                "px-4", // un poco menos ancho para que el icono se vea compacto
+                "px-4",
               ].join(" ")
             }
           >
