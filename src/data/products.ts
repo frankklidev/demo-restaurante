@@ -7,7 +7,7 @@ import Biscotti from '../assets/images/biscotti.jpg'
 
 
 export const RESTAURANT_NAME = "Trattoria Demo";
-export const WHATSAPP_PHONE = "+5355555555"; // <-- cambia aquí
+export const WHATSAPP_PHONE = "+5355555555";
 
 export const CATEGORIES = [
   "Pastas",
