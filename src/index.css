@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* Colores marca Peppino */
+
   --color-peppino-light: #8CCFD0;
   --color-peppino: #4FA3A3;
   --color-peppino-dark: #2F6F6C;
