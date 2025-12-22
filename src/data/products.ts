@@ -1,4 +1,9 @@
 import type { Product } from "../types/catalog";
+import Aceite from '../assets/images/aceite.jpg'
+import Penne from '../assets/images/penne.jpg'
+import Salsa from '../assets/images/salsa.jpg'
+import Prosciutto from '../assets/images/prosciutto.jpg'
+import Biscotti from '../assets/images/biscotti.jpg'
 
 
 export const RESTAURANT_NAME = "Trattoria Demo";
@@ -43,8 +48,7 @@ export const products: Product[] = [
     shortDescription: "Ideal para salsas cremosas: pesto, alfredo, 4 quesos.",
     description:
       "Penne con estrías para atrapar mejor la salsa. Perfecta para platos al horno o salsas densas.",
-    imageUrl:
-      "https://images.unsplash.com/photo-1608756687911-aa1599ab3bd8?auto=format&fit=crop&w=1400&q=80",
+    imageUrl:Penne,
   },
   {
     id: "p3",
@@ -58,8 +62,7 @@ export const products: Product[] = [
     shortDescription: "Frutado, elegante y perfecto para ensaladas y bruschetta.",
     description:
       "AOVE de primera extracción, sabor equilibrado con notas verdes. Úsalo en crudo para elevar cualquier plato.",
-    imageUrl:
-      "https://images.unsplash.com/photo-1542300058-849d3a670b6b?auto=format&fit=crop&w=1400&q=80",
+    imageUrl:Aceite,
     featured: true,
   },
   {
@@ -74,8 +77,7 @@ export const products: Product[] = [
     shortDescription: "Tomate italiano, simple y auténtica para pasta o pizza.",
     description:
       "Salsa de tomate estilo italiano, lista para calentar y servir. Base ideal para recetas caseras.",
-    imageUrl:
-      "https://images.unsplash.com/photo-1604909052563-3a62c9c8c86a?auto=format&fit=crop&w=1400&q=80",
+    imageUrl:Salsa,
   },
   {
     id: "p5",
@@ -105,8 +107,7 @@ export const products: Product[] = [
     shortDescription: "Suave, delicado y perfecto con pan, melón o burrata.",
     description:
       "Jamón curado italiano, loncheado fino. Ideal para antipasti y tablas.",
-    imageUrl:
-      "https://images.unsplash.com/photo-1604908176997-125f25cc500a?auto=format&fit=crop&w=1400&q=80",
+    imageUrl:Prosciutto,
   },
   {
     id: "p7",
@@ -120,7 +121,6 @@ export const products: Product[] = [
     shortDescription: "Crujientes, perfectos para café o vin santo.",
     description:
       "Galletas italianas horneadas dos veces, textura crujiente y sabor intenso a almendra.",
-    imageUrl:
-      "https://images.unsplash.com/photo-1609951651556-5334e2d6b9a7?auto=format&fit=crop&w=1400&q=80",
+    imageUrl:Biscotti,
   },
 ];
