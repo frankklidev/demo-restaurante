@@ -1,10 +1,12 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import type { Product } from "../types/catalog";
 import type { CartState } from "./cart.types";
+import { loadCartState } from "./cart.persist";
 
-const initialState: CartState = {
-  itemsById: {},
-};
+const initialState: CartState =
+  loadCartState() ?? {
+    itemsById: {},
+  };
 
 export const cartSlice = createSlice({
   name: "cart",

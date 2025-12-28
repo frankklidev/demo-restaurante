@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { z } from 'zod';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { selectCartItems, selectCartTotal } from '../store/cart.selectors';
+import { FiUser, FiPhone, FiMapPin, FiHome } from 'react-icons/fi';
 import {
   addToCart,
   clearCart,
@@ -14,16 +16,43 @@ import { WHATSAPP_PHONE, RESTAURANT_NAME } from '../data/products';
 import { buildWhatsAppLink } from '../lib/whatsapp';
 import { MUNICIPIOS } from '../data/delivery';
 
-type MetodoEntrega = 'recoger' | 'domicilio';
+const phoneRegex = /^[0-9+\s()-]{7,}$/;
 
-type CheckoutForm = {
-  firstName: string;
-  lastName: string;
-  phone: string;
-  method: MetodoEntrega;
-  address: string;
-  municipioId: string; // required si domicilio
-};
+const checkoutSchema = z
+  .object({
+    firstName: z.string().trim().min(1, "Nombre requerido"),
+    lastName: z.string().trim().min(1, "Apellido requerido"),
+    phone: z
+      .string()
+      .trim()
+      .min(1, "Teléfono requerido")
+      .regex(phoneRegex, "Teléfono inválido"),
+    method: z.enum(["recoger", "domicilio"]),
+    address: z.string().trim().optional().default(""),
+    municipioId: z.string().trim().optional().default(""),
+  })
+  .superRefine((data, ctx) => {
+    if (data.method === "domicilio") {
+      if (!data.municipioId) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["municipioId"],
+          message: "Selecciona un municipio",
+        });
+      }
+
+      if (!data.address || data.address.trim().length < 5) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["address"],
+          message: "Escribe una dirección válida",
+        });
+      }
+    }
+  });
+
+type CheckoutForm = z.infer<typeof checkoutSchema>;
+type FieldErrors = Partial<Record<keyof CheckoutForm, string>>;
 
 export default function Cart() {
   const dispatch = useAppDispatch();
@@ -32,46 +61,87 @@ export default function Cart() {
 
   const currency = items[0]?.product.currency ?? 'USD';
 
-  const [form, setForm] = useState<CheckoutForm>({
-    firstName: '',
-    lastName: '',
-    phone: '',
-    method: 'recoger',
-    address: '',
-    municipioId: '',
+  const CHECKOUT_KEY = 'peppino_checkout_v1';
+
+  function loadCheckout(): CheckoutForm | null {
+    try {
+      const raw = localStorage.getItem(CHECKOUT_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw) as CheckoutForm;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveCheckout(data: CheckoutForm) {
+    try {
+      localStorage.setItem(CHECKOUT_KEY, JSON.stringify(data));
+    } catch {}
+  }
+
+  const [form, setForm] = useState<CheckoutForm>(() => {
+    return (
+      loadCheckout() ?? {
+        firstName: '',
+        lastName: '',
+        phone: '',
+        method: 'recoger',
+        address: '',
+        municipioId: '',
+      }
+    );
   });
+
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const municipio = useMemo(
     () => MUNICIPIOS.find((m) => m.id === form.municipioId),
     [form.municipioId]
   );
 
-  const shipping = form.method === 'domicilio' ? municipio?.fee ?? 0 : 0;
+  const isDelivery = form.method === 'domicilio';
+  const shipping = isDelivery ? municipio?.fee ?? 0 : 0;
   const total = subtotal + shipping;
 
   const subtotalLabel = formatMoney(subtotal, currency);
   const shippingLabel = formatMoney(shipping, currency);
   const totalLabel = formatMoney(total, currency);
 
-  const isDelivery = form.method === 'domicilio';
+  const isFormFilled =
+    form.firstName.trim() &&
+    form.lastName.trim() &&
+    form.phone.trim() &&
+    (form.method === 'recoger' ||
+      (form.municipioId.trim() && form.address.trim()));
 
-  const errors = useMemo(() => {
-    const e: Record<string, string> = {};
+  const validateForm = (data: CheckoutForm) => {
+    const result = checkoutSchema.safeParse(data);
 
-    if (!form.firstName.trim()) e.firstName = 'Requerido';
-    if (!form.lastName.trim()) e.lastName = 'Requerido';
-    if (!form.phone.trim()) e.phone = 'Requerido';
-
-    if (isDelivery) {
-      if (!form.municipioId) e.municipioId = 'Selecciona un municipio';
-      if (!form.address.trim()) e.address = 'Escribe la dirección';
+    if (result.success) {
+      setFieldErrors({});
+      return { ok: true as const, data: result.data };
     }
 
-    if (items.length === 0) e.items = 'Carrito vacío';
-    return e;
-  }, [form, isDelivery, items.length]);
+    const errs: FieldErrors = {};
+    for (const issue of result.error.issues) {
+      const key = issue.path[0] as keyof CheckoutForm | undefined;
+      if (key && !errs[key]) errs[key] = issue.message;
+    }
+    setFieldErrors(errs);
+    return { ok: false as const };
+  };
 
-  const canSubmit = Object.keys(errors).length === 0;
+  const setFormField = <K extends keyof CheckoutForm>(
+    key: K,
+    value: CheckoutForm[K]
+  ) => {
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      saveCheckout(next);
+      validateForm(next);
+      return next;
+    });
+  };
 
   const buildOrderMessage = () => {
     const lines: string[] = [];
@@ -86,8 +156,9 @@ export default function Cart() {
 
     lines.push('');
     lines.push(`Subtotal: ${subtotalLabel}`);
-    if (isDelivery)
+    if (isDelivery) {
       lines.push(`Envío: ${shippingLabel} (${municipio?.name ?? 'Municipio'})`);
+    }
     lines.push(`Total: *${totalLabel}*`);
 
     lines.push('');
@@ -113,11 +184,18 @@ export default function Cart() {
   };
 
   const onCompleteOrder = () => {
-    if (!canSubmit) return;
+    if (items.length === 0) return;
+
+    const result = validateForm(form);
+    if (!result.ok) return;
+
     const msg = buildOrderMessage();
     const link = buildWhatsAppLink(WHATSAPP_PHONE, msg);
     window.open(link, '_blank', 'noreferrer');
   };
+
+  const canSubmit =
+    items.length > 0 && isFormFilled && Object.keys(fieldErrors).length === 0;
 
   if (items.length === 0) {
     return (
@@ -183,18 +261,20 @@ export default function Cart() {
               <div className='flex flex-wrap items-center gap-3 justify-between sm:justify-end'>
                 <div className='flex items-center gap-2'>
                   <button
-  onClick={() => dispatch(decrement({ productId: product.id }))}
-  className="
-    h-10 w-10 rounded-2xl
-    border border-red-500/50
-    bg-red-50/70
-    font-black text-red-700
-    hover:bg-red-100/80
-    transition
-  "
->
-  −
-</button>
+                    onClick={() =>
+                      dispatch(decrement({ productId: product.id }))
+                    }
+                    className='
+                      h-10 w-10 rounded-2xl
+                      border border-red-500/50
+                      bg-red-50/70
+                      font-black text-red-700
+                      hover:bg-red-100/80
+                      transition
+                    '
+                  >
+                    −
+                  </button>
 
                   <input
                     value={qty}
@@ -227,12 +307,12 @@ export default function Cart() {
                     dispatch(removeFromCart({ productId: product.id }))
                   }
                   className='
-    rounded-2xl px-3 py-2 text-sm font-bold
-    border border-red-400
-    text-red-600
-    hover:bg-red-50
-    transition
-  '
+                    rounded-2xl px-3 py-2 text-sm font-bold
+                    border border-red-400
+                    text-red-600
+                    hover:bg-red-50
+                    transition
+                  '
                 >
                   Quitar
                 </button>
@@ -257,25 +337,28 @@ export default function Cart() {
             <Field
               label='Nombre'
               value={form.firstName}
-              onChange={(v) => setForm((s) => ({ ...s, firstName: v }))}
+              onChange={(v) => setFormField('firstName', v)}
               placeholder='Ej: Juan'
-              error={errors.firstName}
+              error={fieldErrors.firstName}
+              icon={<FiUser />}
             />
             <Field
               label='Apellido'
               value={form.lastName}
-              onChange={(v) => setForm((s) => ({ ...s, lastName: v }))}
+              onChange={(v) => setFormField('lastName', v)}
               placeholder='Ej: Pérez'
-              error={errors.lastName}
+              error={fieldErrors.lastName}
+              icon={<FiUser />}
             />
 
             <div className='sm:col-span-2'>
               <Field
                 label='Teléfono'
                 value={form.phone}
-                onChange={(v) => setForm((s) => ({ ...s, phone: v }))}
+                onChange={(v) => setFormField('phone', v)}
                 placeholder='Ej: 53xxxxxxx'
-                error={errors.phone}
+                error={fieldErrors.phone}
+                icon={<FiPhone />}
               />
             </div>
 
@@ -286,14 +369,17 @@ export default function Cart() {
               <div className='mt-2 flex gap-3'>
                 <button
                   type='button'
-                  onClick={() =>
-                    setForm((s) => ({
-                      ...s,
+                  onClick={() => {
+                    const next: CheckoutForm = {
+                      ...form,
                       method: 'recoger',
                       address: '',
                       municipioId: '',
-                    }))
-                  }
+                    };
+                    setForm(next);
+                    saveCheckout(next);
+                    validateForm(next);
+                  }}
                   className={[
                     'rounded-2xl px-5 py-2.5 text-sm font-black border transition',
                     form.method === 'recoger'
@@ -306,9 +392,11 @@ export default function Cart() {
 
                 <button
                   type='button'
-                  onClick={() =>
-                    setForm((s) => ({ ...s, method: 'domicilio' }))
-                  }
+                  onClick={() => {
+                    const next: CheckoutForm = { ...form, method: 'domicilio' };
+                    setForm(next);
+                    validateForm(next);
+                  }}
                   className={[
                     'rounded-2xl px-5 py-2.5 text-sm font-black border transition',
                     form.method === 'domicilio'
@@ -323,43 +411,33 @@ export default function Cart() {
 
             {isDelivery && (
               <>
-                <div className='sm:col-span-2'>
-                  <label className='text-sm font-bold text-peppino-dark'>
-                    Municipio
-                  </label>
+                <div className='mt-2 flex items-center gap-3 rounded-2xl border bg-white px-4 py-3'>
+                  <FiMapPin className='text-peppino-dark/50 text-lg' />
+
                   <select
                     value={form.municipioId}
                     onChange={(e) =>
-                      setForm((s) => ({ ...s, municipioId: e.target.value }))
+                      setFormField('municipioId', e.target.value)
                     }
-                    className={[
-                      'mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-base outline-none',
-                      errors.municipioId
-                        ? 'border-red-400'
-                        : 'border-peppino-dark/20',
-                    ].join(' ')}
+                    className='w-full bg-transparent text-base text-peppino-dark outline-none'
                   >
-                    <option value=''>Selecciona un municipio…</option>
+                    <option value=''>Elige Municipio</option>
                     {MUNICIPIOS.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name} (+{formatMoney(m.fee, currency)})
                       </option>
                     ))}
                   </select>
-                  {errors.municipioId ? (
-                    <p className='mt-1 text-xs font-semibold text-red-600'>
-                      {errors.municipioId}
-                    </p>
-                  ) : null}
                 </div>
 
                 <div className='sm:col-span-2'>
                   <Field
                     label='Dirección'
                     value={form.address}
-                    onChange={(v) => setForm((s) => ({ ...s, address: v }))}
-                    placeholder='Ej: Calle 23 #100 e/ 10 y 12, Vedado'
-                    error={errors.address}
+                    onChange={(v) => setFormField('address', v)}
+                    placeholder='Ej: Calle 23 #100 e/ 10 y 12'
+                    error={fieldErrors.address}
+                    icon={<FiHome />}
                   />
                 </div>
               </>
@@ -428,20 +506,37 @@ function Field(props: {
   onChange: (v: string) => void;
   placeholder?: string;
   error?: string;
+  icon: React.ReactNode;
 }) {
-  const { label, value, onChange, placeholder, error } = props;
+  const { label, value, onChange, placeholder, error, icon } = props;
+
   return (
     <div>
       <label className='text-sm font-bold text-peppino-dark'>{label}</label>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
+
+      <div
         className={[
-          'mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-base text-peppino-dark outline-none placeholder:text-peppino-dark/40',
+          'mt-2 flex items-center gap-3 rounded-2xl border bg-white px-4 py-3 transition',
           error ? 'border-red-400' : 'border-peppino-dark/20',
         ].join(' ')}
-      />
+      >
+        <span
+          className={[
+            'text-lg',
+            error ? 'text-red-500' : 'text-peppino-dark/50',
+          ].join(' ')}
+        >
+          {icon}
+        </span>
+
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className='w-full bg-transparent text-base text-peppino-dark outline-none placeholder:text-peppino-dark/40'
+        />
+      </div>
+
       {error ? (
         <p className='mt-1 text-xs font-semibold text-red-600'>{error}</p>
       ) : null}
